@@ -16,6 +16,7 @@ import type {
 } from '@/types'
 import { supabaseAdmin } from './admin-client'
 import { engineSendText, engineSendTemplate } from './meta-send'
+import { sendMetaMessage, replyToComment } from '@/lib/meta/graph-api'
 
 // ------------------------------------------------------------
 // Public API
@@ -32,6 +33,12 @@ export interface AutomationContext {
   tag_id?: string
   /** Agent the conversation was assigned to, for conversation_assigned. */
   agent_id?: string
+  /** Sender ID for Facebook/Instagram events. */
+  sender_id?: string
+  /** Comment ID for Facebook/Instagram comments. */
+  comment_id?: string
+  /** Post ID for Facebook/Instagram comments. */
+  post_id?: string
 }
 
 export interface DispatchInput {
@@ -545,6 +552,60 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         .eq('account_id', args.automation.account_id)
         .eq('contact_id', args.contactId)
       return 'conversation closed'
+    }
+
+    case 'send_facebook_message':
+    case 'send_instagram_message': {
+      const cfg = step.step_config as SendMessageStepConfig
+      const platform = step.step_type === 'send_facebook_message' ? 'facebook' : 'instagram'
+      if (!args.contactId) throw new Error(`${step.step_type} needs a contact`)
+      const text = interpolate(cfg.text, args)
+      if (!text.trim()) throw new Error(`${step.step_type} has empty text`)
+
+      // Fetch config based on platform
+      const table = platform === 'facebook' ? 'facebook_config' : 'instagram_config'
+      const { data: config } = await db.from(table).select('*').eq('user_id', args.automation.user_id).single()
+      
+      if (!config) throw new Error(`no ${platform} config found`)
+
+      // For simplicity, we use sender_id from context (which comes from webhook)
+      const recipientId = args.context.sender_id
+      if (!recipientId) throw new Error(`${step.step_type} missing sender_id in context`)
+
+      const pageId = platform === 'facebook' ? config.page_id : config.ig_account_id
+
+      await sendMetaMessage({
+        pageId,
+        accessToken: config.access_token,
+        recipientId,
+        text,
+        platform
+      })
+
+      return `sent via ${platform}`
+    }
+
+    case 'reply_to_comment': {
+      const cfg = step.step_config as SendMessageStepConfig
+      const text = interpolate(cfg.text, args)
+      if (!text.trim()) throw new Error(`reply_to_comment has empty text`)
+
+      const commentId = args.context.comment_id
+      if (!commentId) throw new Error(`reply_to_comment missing comment_id in context`)
+
+      // Retrieve either FB or IG token (depending on where the comment came from).
+      // For a robust implementation, the webhook should add `platform` to the context.
+      // Assuming we can retrieve the generic FB page access token since both APIs use it:
+      const { data: fbConfig } = await db.from('facebook_config').select('access_token').eq('user_id', args.automation.user_id).maybeSingle()
+      if (!fbConfig) throw new Error(`no config found for replying to comment`)
+
+      await replyToComment({
+        commentId,
+        accessToken: fbConfig.access_token,
+        text
+      })
+
+      return 'replied to comment'
     }
 
     default:

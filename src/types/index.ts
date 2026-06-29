@@ -148,6 +148,7 @@ export interface Conversation {
   id: string;
   user_id: string;
   contact_id: string;
+  platform: 'whatsapp' | 'facebook' | 'instagram';
   status: ConversationStatus;
   assigned_agent_id?: string;
   last_message_text?: string;
@@ -174,6 +175,7 @@ export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed'
 export interface Message {
   id: string;
   conversation_id: string;
+  platform: 'whatsapp' | 'facebook' | 'instagram';
   sender_type: SenderType;
   sender_id?: string;
   content_type: ContentType;
@@ -324,6 +326,7 @@ export interface Broadcast {
   id: string;
   user_id: string;
   name: string;
+  target_platform: 'whatsapp' | 'facebook' | 'instagram';
   template_name: string;
   template_language: string;
   template_variables?: Record<string, unknown>;
@@ -375,7 +378,13 @@ export type AutomationTriggerType =
   | 'new_contact_created'
   | 'conversation_assigned'
   | 'tag_added'
-  | 'time_based';
+  | 'time_based'
+  | 'instagram_message_received'
+  | 'facebook_message_received'
+  | 'instagram_comment_received'
+  | 'facebook_comment_received'
+  | 'instagram_new_follower'
+  | 'facebook_new_follower';
 
 export type AutomationStepType =
   | 'send_message'
@@ -388,7 +397,10 @@ export type AutomationStepType =
   | 'wait'
   | 'condition'
   | 'send_webhook'
-  | 'close_conversation';
+  | 'close_conversation'
+  | 'send_facebook_message'
+  | 'send_instagram_message'
+  | 'reply_to_comment';
 
 export type AutomationLogStatus = 'success' | 'partial' | 'failed';
 

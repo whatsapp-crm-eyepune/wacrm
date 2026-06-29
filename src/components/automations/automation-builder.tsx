@@ -99,6 +99,9 @@ const STEP_META: Record<AutomationStepType, StepMeta> = {
   condition: { label: "Condition (If/Else)", icon: GitBranch, border: "border-l-amber-500" },
   send_webhook: { label: "Send Webhook", icon: Webhook, border: "border-l-primary" },
   close_conversation: { label: "Close Conversation", icon: CircleSlash, border: "border-l-primary" },
+  send_facebook_message: { label: "Send Facebook Message", icon: MessageSquare, border: "border-l-blue-500" },
+  send_instagram_message: { label: "Send Instagram Message", icon: MessageSquare, border: "border-l-pink-500" },
+  reply_to_comment: { label: "Reply to Comment", icon: MessageSquare, border: "border-l-purple-500" },
 }
 
 const ADDABLE_STEPS: AutomationStepType[] = [
@@ -113,6 +116,9 @@ const ADDABLE_STEPS: AutomationStepType[] = [
   "condition",
   "send_webhook",
   "close_conversation",
+  "send_facebook_message",
+  "send_instagram_message",
+  "reply_to_comment",
 ]
 
 const TRIGGER_OPTIONS: { value: AutomationTriggerType; label: string; hint: string }[] = [
@@ -127,6 +133,12 @@ const TRIGGER_OPTIONS: { value: AutomationTriggerType; label: string; hint: stri
   { value: "conversation_assigned", label: "Conversation Assigned", hint: "When assigned to an agent" },
   { value: "tag_added", label: "Tag Added", hint: "When a tag is added to a contact" },
   { value: "time_based", label: "Time-Based", hint: "On a recurring schedule" },
+  { value: "facebook_message_received", label: "Facebook Message Received", hint: "When a user sends a message on Facebook" },
+  { value: "instagram_message_received", label: "Instagram Message Received", hint: "When a user sends a DM on Instagram" },
+  { value: "facebook_comment_received", label: "Facebook Comment Received", hint: "When a user comments on a Facebook post" },
+  { value: "instagram_comment_received", label: "Instagram Comment Received", hint: "When a user comments on an Instagram post" },
+  { value: "facebook_new_follower", label: "Facebook New Follower", hint: "When a user follows your Facebook Page" },
+  { value: "instagram_new_follower", label: "Instagram New Follower", hint: "When a user follows your Instagram Account" },
 ]
 
 function cid(): string {
@@ -141,6 +153,9 @@ function cid(): string {
 function blankConfig(type: AutomationStepType): Record<string, unknown> {
   switch (type) {
     case "send_message":
+    case "send_facebook_message":
+    case "send_instagram_message":
+    case "reply_to_comment":
       return { text: "" }
     case "send_template":
       return { template_name: "", language: "en_US" }

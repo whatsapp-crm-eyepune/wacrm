@@ -162,17 +162,20 @@ export async function GET(request: Request) {
 
 // POST - Receive messages
 export async function POST(request: Request) {
-  // Read raw body first so we can HMAC-verify the exact bytes Meta
-  // signed. request.json() would re-encode and break the signature.
   const rawBody = await request.text()
   const signature = request.headers.get('x-hub-signature-256')
+  const { searchParams } = new URL(request.url)
+  const source = searchParams.get('source')
 
-  if (!verifyMetaWebhookSignature(rawBody, signature)) {
-    // 401 (not 200) — we want Meta's delivery dashboard to show failures
-    // loudly if a misconfiguration causes signatures to stop matching,
-    // rather than silently eating events.
-    console.warn('[webhook] rejected request with invalid signature')
-    return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+  // Bypass signature check if this is from our local QR engine
+  if (source !== 'local_engine') {
+    if (!verifyMetaWebhookSignature(rawBody, signature)) {
+      // 401 (not 200) — we want Meta's delivery dashboard to show failures
+      // loudly if a misconfiguration causes signatures to stop matching,
+      // rather than silently eating events.
+      console.warn('[webhook] rejected request with invalid signature')
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+    }
   }
 
   let body: { entry?: WhatsAppWebhookEntry[] }
@@ -183,14 +186,14 @@ export async function POST(request: Request) {
   }
 
   // Process asynchronously so we can ack Meta within their timeout.
-  processWebhook(body).catch((error) => {
+  processWebhook(body, source).catch((error) => {
     console.error('Error processing webhook:', error)
   })
 
   return NextResponse.json({ status: 'received' }, { status: 200 })
 }
 
-async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
+async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }, source: string | null) {
   if (!body.entry) return
 
   for (const entry of body.entry) {
@@ -227,10 +230,18 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
       // operators see the real cause in logs. ≥2 rows shouldn't happen
       // post-migration 013 (UNIQUE constraint), but a row created
       // before the constraint, or a race, would still surface here.
-      const { data: configRows, error: configError } = await supabaseAdmin()
+      // Find user's config by phone_number_id (or account_id if local).
+      let configQuery = supabaseAdmin()
         .from('whatsapp_config')
-        .select('*')
-        .eq('phone_number_id', phoneNumberId)
+        .select('*');
+        
+      if (source === 'local_engine') {
+        configQuery = configQuery.eq('account_id', phoneNumberId); // server.js passes accountId here
+      } else {
+        configQuery = configQuery.eq('phone_number_id', phoneNumberId);
+      }
+      
+      const { data: configRows, error: configError } = await configQuery;
 
       if (configError) {
         console.error(

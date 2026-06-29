@@ -123,12 +123,12 @@ export async function POST(request: Request) {
       )
     }
 
-    // Fetch and decrypt WhatsApp config
+    // Fetch WhatsApp config (we bypass the token decryption since we use the local engine)
     const { data: config, error: configError } = await supabase
       .from('whatsapp_config')
       .select('*')
       .eq('account_id', accountId)
-      .single()
+      .maybeSingle()
 
     if (configError || !config) {
       return NextResponse.json(
@@ -137,27 +137,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const accessToken = decrypt(config.access_token)
-
-    // Self-heal legacy CBC-encrypted tokens. Fire-and-forget: we
-    // return from the send without waiting, so a failed upgrade just
-    // means the next send tries again. The upgrade is idempotent —
-    // concurrent sends both produce valid GCM ciphertexts of the same
-    // plaintext, last write wins.
-    if (isLegacyFormat(config.access_token)) {
-      void supabase
-        .from('whatsapp_config')
-        .update({ access_token: encrypt(accessToken) })
-        .eq('id', config.id)
-        .then(({ error }) => {
-          if (error) {
-            console.warn(
-              '[whatsapp/send] access_token GCM upgrade failed:',
-              error.message,
-            )
-          }
-        })
-    }
+    const accessToken = 'local_engine_bypass';
 
     // Resolve the reply target (if any) to its Meta message_id, which is
     // what `context.message_id` on the outgoing Meta payload needs. The
@@ -230,30 +210,40 @@ export async function POST(request: Request) {
     }
 
     const attempt = async (phone: string): Promise<string> => {
+      const engineUrl = process.env.WHATSAPP_ENGINE_URL || 'http://localhost:3001';
+      let messageText = content_text;
+
       if (message_type === 'template') {
-        const result = await sendTemplateMessage({
-          phoneNumberId: config.phone_number_id,
-          accessToken,
-          to: phone,
-          templateName: template_name,
-          language: template_language || 'en_US',
-          template: templateRow ?? undefined,
-          messageParams: template_message_params ?? undefined,
-          // Legacy body-only fallback — only consulted when
-          // messageParams.body isn't set.
-          params: template_params || [],
-          contextMessageId,
-        })
-        return result.messageId
+        messageText = `[Template]\n`;
+        if (templateRow) {
+          if (templateRow.body_text) {
+            let text = templateRow.body_text;
+            template_params?.forEach((p: string, i: number) => {
+              text = text.replace(`{{${i + 1}}}`, p);
+            });
+            messageText = text;
+          }
+        }
       }
-      const result = await sendTextMessage({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
-        to: phone,
-        text: content_text,
-        contextMessageId,
-      })
-      return result.messageId
+
+      const res = await fetch(`${engineUrl}/api/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId: accountId,
+          to: phone,
+          message: messageText
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error(`Engine returned ${res.status}`);
+      }
+
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      return data.messageId || `local-${Date.now()}`;
     }
 
     try {
@@ -268,14 +258,11 @@ export async function POST(request: Request) {
           break
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
-          // Only retry when the failure is specifically that the
-          // recipient isn't in Meta's allowed list. Any other error
-          // (bad token, invalid template, etc.) bubbles up immediately.
           if (!isRecipientNotAllowedError(message)) {
             throw err
           }
           lastError = err
-          console.warn(`[whatsapp/send] variant "${variant}" rejected by Meta, trying next…`)
+          console.warn(`[whatsapp/send] variant "${variant}" rejected, trying next…`)
         }
       }
 

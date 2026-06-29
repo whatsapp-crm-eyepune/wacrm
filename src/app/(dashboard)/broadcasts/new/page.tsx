@@ -12,6 +12,8 @@ import { Step3Personalize } from '@/components/broadcasts/step3-personalize';
 import { Step4ScheduleSend } from '@/components/broadcasts/step4-schedule-send';
 import { useBroadcastSending } from '@/hooks/use-broadcast-sending';
 import { Check } from 'lucide-react';
+import { MessageCircle } from 'lucide-react';
+import { FacebookIcon, InstagramIcon } from '@/components/icons';
 
 const steps = [
   { label: 'Template', key: 'template' },
@@ -26,6 +28,7 @@ export default function NewBroadcastPage() {
   const { createAndSendBroadcast, isProcessing, progress } = useBroadcastSending();
 
   const [currentStep, setCurrentStep] = useState(0);
+  const [targetPlatform, setTargetPlatform] = useState<'whatsapp' | 'facebook' | 'instagram'>('whatsapp');
   const [template, setTemplate] = useState<MessageTemplate | null>(null);
   const [audience, setAudience] = useState<{
     type: 'all' | 'tags' | 'custom_field' | 'csv';
@@ -58,6 +61,7 @@ export default function NewBroadcastPage() {
           excludeTagIds: audience.excludeTagIds,
         },
         variables,
+        target_platform: targetPlatform,
       });
       router.push(`/broadcasts/${broadcastId}`);
     } catch (err) {
@@ -104,6 +108,7 @@ export default function NewBroadcastPage() {
       template_name: template.name,
       template_language: template.language ?? 'en_US',
       template_variables: variables,
+      target_platform: targetPlatform,
       audience_filter: {
         type: audience.type,
         tagIds: audience.tagIds,
@@ -185,12 +190,40 @@ export default function NewBroadcastPage() {
           }}
         >
           {currentStep === 0 && (
-            <Step1ChooseTemplate
-              selectedTemplate={template}
-              onSelect={setTemplate}
-              onNext={() => setCurrentStep(1)}
-              onBack={() => router.push('/broadcasts')}
-            />
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-lg font-semibold text-white mb-4">Select Target Platform</h2>
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => setTargetPlatform('whatsapp')}
+                    className={`flex items-center gap-2 px-4 py-3 rounded-xl border ${targetPlatform === 'whatsapp' ? 'border-primary bg-primary/10 text-primary' : 'border-slate-800 bg-slate-900/50 text-slate-400 hover:border-slate-700 hover:bg-slate-900'} transition-all flex-1`}
+                  >
+                    <MessageCircle className="size-5" />
+                    <span className="font-medium">WhatsApp</span>
+                  </button>
+                  <button
+                    onClick={() => setTargetPlatform('facebook')}
+                    className={`flex items-center gap-2 px-4 py-3 rounded-xl border ${targetPlatform === 'facebook' ? 'border-blue-500 bg-blue-500/10 text-blue-400' : 'border-slate-800 bg-slate-900/50 text-slate-400 hover:border-slate-700 hover:bg-slate-900'} transition-all flex-1`}
+                  >
+                    <FacebookIcon className="size-5" />
+                    <span className="font-medium">Facebook</span>
+                  </button>
+                  <button
+                    onClick={() => setTargetPlatform('instagram')}
+                    className={`flex items-center gap-2 px-4 py-3 rounded-xl border ${targetPlatform === 'instagram' ? 'border-pink-500 bg-pink-500/10 text-pink-400' : 'border-slate-800 bg-slate-900/50 text-slate-400 hover:border-slate-700 hover:bg-slate-900'} transition-all flex-1`}
+                  >
+                    <InstagramIcon className="size-5" />
+                    <span className="font-medium">Instagram</span>
+                  </button>
+                </div>
+              </div>
+              <Step1ChooseTemplate
+                selectedTemplate={template}
+                onSelect={setTemplate}
+                onNext={() => setCurrentStep(1)}
+                onBack={() => router.push('/broadcasts')}
+              />
+            </div>
           )}
           {currentStep === 1 && (
             <Step2SelectAudience

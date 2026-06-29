@@ -134,11 +134,12 @@ export async function POST(request: Request) {
       )
     }
 
+    // We still fetch the config but we don't strictly require the meta tokens anymore
     const { data: config, error: configError } = await supabase
       .from('whatsapp_config')
       .select('*')
       .eq('account_id', accountId)
-      .single()
+      .maybeSingle()
 
     if (configError || !config) {
       return NextResponse.json(
@@ -150,7 +151,8 @@ export async function POST(request: Request) {
       )
     }
 
-    const accessToken = decrypt(config.access_token)
+    // Bypass Meta's access token requirement since we are using local engine
+    const accessToken = 'local_engine_bypass'
 
     // Load the template row once so sendTemplateMessage can build
     // header + button components on each iteration. Loading inside
@@ -198,19 +200,40 @@ export async function POST(request: Request) {
       let sentMessageId: string | null = null
       let lastError: string | null = null
 
+      // Build the raw message text from the template
+      let messageText = `[Broadcast]\n`;
+      if (templateRow) {
+        const bodyComponent = templateRow.components.find((c: any) => c.type === 'BODY');
+        if (bodyComponent && bodyComponent.text) {
+          let text = bodyComponent.text;
+          recipient.params?.forEach((p: string, i: number) => {
+            text = text.replace(`{{${i + 1}}}`, p);
+          });
+          messageText = text;
+        }
+      }
+
       for (const variant of variants) {
         try {
-          const result = await sendTemplateMessage({
-            phoneNumberId: config.phone_number_id,
-            accessToken,
-            to: variant,
-            templateName: template_name,
-            language: template_language || 'en_US',
-            template: templateRow ?? undefined,
-            messageParams: recipient.messageParams,
-            params: recipient.params ?? [],
-          })
-          sentMessageId = result.messageId
+          const engineUrl = process.env.WHATSAPP_ENGINE_URL || 'http://localhost:3001';
+          const res = await fetch(`${engineUrl}/api/send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              accountId: accountId,
+              to: variant,
+              message: messageText
+            })
+          });
+
+          if (!res.ok) {
+            throw new Error(`Engine returned ${res.status}`);
+          }
+          
+          const data = await res.json();
+          if (data.error) throw new Error(data.error);
+
+          sentMessageId = data.messageId || `local-${Date.now()}`;
           lastError = null
           break
         } catch (error) {

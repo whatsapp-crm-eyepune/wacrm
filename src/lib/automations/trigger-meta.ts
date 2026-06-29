@@ -35,6 +35,30 @@ export const TRIGGER_META: Record<AutomationTriggerType, TriggerMeta> = {
     label: 'Time-Based',
     pillClass: 'border-slate-500/30 bg-slate-500/10 text-slate-300',
   },
+  instagram_message_received: {
+    label: 'Instagram Message',
+    pillClass: 'border-pink-500/30 bg-pink-500/10 text-pink-300',
+  },
+  facebook_message_received: {
+    label: 'Facebook Message',
+    pillClass: 'border-blue-600/30 bg-blue-600/10 text-blue-400',
+  },
+  instagram_comment_received: {
+    label: 'Instagram Comment',
+    pillClass: 'border-purple-500/30 bg-purple-500/10 text-purple-300',
+  },
+  facebook_comment_received: {
+    label: 'Facebook Comment',
+    pillClass: 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300',
+  },
+  instagram_new_follower: {
+    label: 'Instagram New Follower',
+    pillClass: 'border-rose-500/30 bg-rose-500/10 text-rose-300',
+  },
+  facebook_new_follower: {
+    label: 'Facebook New Follower',
+    pillClass: 'border-sky-500/30 bg-sky-500/10 text-sky-300',
+  },
 }
 
 export function triggerMeta(t: AutomationTriggerType | string): TriggerMeta {

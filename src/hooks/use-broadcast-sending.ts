@@ -39,6 +39,7 @@ interface BroadcastPayload {
   template: MessageTemplate;
   audience: AudienceConfig;
   variables: Record<string, VariableMapping>;
+  target_platform?: 'whatsapp' | 'facebook' | 'instagram';
 }
 
 interface UseBroadcastSendingReturn {

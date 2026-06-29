@@ -426,6 +426,7 @@ export function MessageThread({
       const optimisticMsg: Message = {
         id: tempId,
         conversation_id: conversation.id,
+        platform: conversation.platform ?? "whatsapp",
         sender_type: "agent",
         content_type: "text",
         content_text: text,
@@ -509,6 +510,7 @@ export function MessageThread({
       const optimisticMsg: Message = {
         id: tempId,
         conversation_id: conversation.id,
+        platform: conversation.platform ?? "whatsapp",
         sender_type: "agent",
         content_type: "template",
         content_text: renderedBody,
@@ -785,11 +787,11 @@ export function MessageThread({
           {/* Status dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger className={cn(
-                  "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-slate-800",
-                  currentStatus?.color ?? "text-slate-400"
-                )}>
-                {currentStatus?.label ?? "Status"}
-                <ChevronDown className="h-3 w-3" />
+              "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-slate-800",
+              currentStatus?.color ?? "text-slate-400"
+            )}>
+              {currentStatus?.label ?? "Status"}
+              <ChevronDown className="h-3 w-3" />
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
@@ -895,9 +897,9 @@ export function MessageThread({
                       : null;
                     const reply = parent
                       ? {
-                          authorLabel: authorLabelFor(parent),
-                          preview: buildReplyPreview(parent),
-                        }
+                        authorLabel: authorLabelFor(parent),
+                        preview: buildReplyPreview(parent),
+                      }
                       : null;
                     const msgReactions = reactionsByMessageId.get(msg.id);
                     // Toggle is computed at the call site — `msgReactions`

@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus } from "@/types";
-import { Search, ChevronDown } from "lucide-react";
+import { Search, ChevronDown, MessageCircle } from "lucide-react";
+import { FacebookIcon, InstagramIcon } from "@/components/icons";
 import { formatDistanceToNow } from "date-fns";
 import { Input } from "@/components/ui/input";
 import {
@@ -268,9 +269,18 @@ function ConversationItem({
       {/* Content */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-sm font-medium text-white">
-            {displayName}
-          </span>
+          <div className="flex items-center gap-1.5 overflow-hidden">
+            {conversation.platform === "facebook" ? (
+              <FacebookIcon className="size-3.5 text-blue-500 shrink-0" />
+            ) : conversation.platform === "instagram" ? (
+              <InstagramIcon className="size-3.5 text-pink-500 shrink-0" />
+            ) : (
+              <MessageCircle className="size-3.5 text-emerald-500 shrink-0" />
+            )}
+            <span className="truncate text-sm font-medium text-white">
+              {displayName}
+            </span>
+          </div>
           <span className="shrink-0 text-[10px] text-slate-500">{timeAgo}</span>
         </div>
         <div className="mt-0.5 flex items-center justify-between gap-2">

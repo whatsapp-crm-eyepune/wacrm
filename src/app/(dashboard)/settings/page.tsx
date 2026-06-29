@@ -14,6 +14,8 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useCan } from '@/hooks/use-can';
 import { WhatsAppConfig } from '@/components/settings/whatsapp-config';
+import { FacebookConfig } from '@/components/settings/facebook-config';
+import { InstagramConfig } from '@/components/settings/instagram-config';
 import { TemplateManager } from '@/components/settings/template-manager';
 import { TagManager } from '@/components/settings/tag-manager';
 import { ProfileForm } from '@/components/settings/profile-form';
@@ -26,7 +28,7 @@ import { CustomFieldsSettings } from '@/components/settings/custom-fields-settin
 
 const TAB_VALUES = [
   'profile',
-  'whatsapp',
+  'channels',
   'templates',
   'tags',
   'custom-fields',
@@ -86,11 +88,11 @@ export default function SettingsPage() {
             Profile
           </TabsTrigger>
           <TabsTrigger
-            value="whatsapp"
+            value="channels"
             className="data-active:text-primary text-slate-400 data-active:bg-slate-800"
           >
             <Settings className="size-4" />
-            WhatsApp Config
+            Channels
           </TabsTrigger>
           <TabsTrigger
             value="templates"
@@ -144,8 +146,10 @@ export default function SettingsPage() {
           <SessionsCard />
         </TabsContent>
 
-        <TabsContent value="whatsapp">
+        <TabsContent value="channels">
           <WhatsAppConfig />
+          <FacebookConfig />
+          <InstagramConfig />
         </TabsContent>
 
         <TabsContent value="templates">

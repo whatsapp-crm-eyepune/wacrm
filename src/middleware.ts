@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -62,7 +62,7 @@ export async function proxy(request: NextRequest) {
 
   // API routes that need auth (not webhooks)
   if (!user && request.nextUrl.pathname.startsWith('/api/whatsapp/') &&
-      !request.nextUrl.pathname.includes('/webhook')) {
+    !request.nextUrl.pathname.includes('/webhook')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
