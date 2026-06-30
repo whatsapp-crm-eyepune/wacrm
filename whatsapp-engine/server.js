@@ -3,7 +3,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const cors = require('cors');
-const { Client, NoAuth } = require('whatsapp-web.js');
+const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const { createClient } = require('@supabase/supabase-js');
 
@@ -31,6 +31,11 @@ const VERCEL_APP_URL = process.env.VERCEL_APP_URL || 'http://localhost:3000';
 const clients = {}; 
 // Store latest QR code by accountId
 const qrCodes = {};
+// *** FIX: Explicit state tracking instead of inferring from fragile internal properties ***
+// Possible values: 'INITIALIZING' | 'QR_READY' | 'AUTHENTICATING' | 'CONNECTED' | 'ERROR'
+const clientStates = {};
+// Store connected phone number
+const clientPhones = {};
 
 // Helper to write messages directly to Supabase
 async function syncMessageToDb(accountId, msg, chatData) {
@@ -121,25 +126,17 @@ function initializeClient(accountId) {
   if (clients[accountId]) return clients[accountId];
 
   console.log(`Initializing client for account ${accountId}...`);
-  
-  // FORCE WIPE corrupted sessions that cause Client.js to crash on boot
-  const authPath = path.join(__dirname, '.wwebjs_auth');
-  try {
-    if (fs.existsSync(authPath)) {
-      fs.rmSync(authPath, { recursive: true, force: true });
-      console.log('Cleaned corrupted session directory automatically.');
-    }
-  } catch (e) {
-    console.log('Warning: Could not clear session directory. It might be locked by another process.');
-  }
+  clientStates[accountId] = 'INITIALIZING';
 
   const client = new Client({
-    // We stick to NoAuth for now because LocalAuth on Windows can be extremely finicky with lockfiles,
-    // but the graceful shutdown added below makes it much safer if you ever switch to LocalAuth.
-    authStrategy: new NoAuth(),
-    webVersionCache: { type: 'none' }, // Explicitly disable cache to prevent HTML corruption
+    authStrategy: new LocalAuth({ clientId: accountId }),
+    webVersionCache: {
+      type: 'remote',
+      remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html',
+      strict: false
+    },
     puppeteer: {
-      headless: process.env.NODE_ENV === 'production' ? true : false,
+      headless: 'new', // Always run headless to avoid Windows GUI suspension
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null,
       args: [
         '--no-sandbox', 
@@ -149,21 +146,39 @@ function initializeClient(accountId) {
         '--no-first-run',
         '--no-zygote',
         '--disable-gpu',
-        '--window-position=-10000,-10000', // Hide the window off-screen!
-        '--window-size=100,100'
+        '--js-flags="--max-old-space-size=150"'
       ]
     }
   });
 
+  // *** QR EVENT: Store QR and set state ***
   client.on('qr', (qr) => {
     console.log(`QR Code received for account ${accountId}`);
-    // qrcode.generate(qr, { small: true }); // Print in terminal for debugging
-    qrCodes[accountId] = qr; // Store for the Next.js frontend to fetch
+    qrCodes[accountId] = qr;
+    clientStates[accountId] = 'QR_READY';
   });
 
+  // *** AUTHENTICATED EVENT: Clear QR immediately and transition to AUTHENTICATING ***
+  // This is the KEY fix — previously the QR was only cleared on 'ready', 
+  // so between 'authenticated' and 'ready' the status endpoint still served the stale QR.
+  client.on('authenticated', () => {
+    console.log(`Client for account ${accountId} authenticated!`);
+    qrCodes[accountId] = null; // *** Clear QR immediately after scan ***
+    clientStates[accountId] = 'AUTHENTICATING'; // Transitional state while WA Web loads
+  });
+
+  // *** READY EVENT: Fully connected ***
   client.on('ready', async () => {
     console.log(`Client for account ${accountId} is ready!`);
-    qrCodes[accountId] = null; // Clear QR once connected
+    qrCodes[accountId] = null; // Defensive clear
+    clientStates[accountId] = 'CONNECTED';
+    
+    // Store the phone number for status responses
+    try {
+      clientPhones[accountId] = client.info ? client.info.wid.user : null;
+    } catch (e) {
+      clientPhones[accountId] = null;
+    }
     
     // Auto-sync historical conversations upon connection!
     console.log(`[SYNC] Fetching recent chats for account ${accountId}...`);
@@ -184,22 +199,31 @@ function initializeClient(accountId) {
     }
   });
 
-  client.on('authenticated', () => {
-    console.log(`Client for account ${accountId} authenticated!`);
-  });
-
   client.on('auth_failure', (msg) => {
     console.error(`Auth failure for account ${accountId}:`, msg);
+    clientStates[accountId] = 'ERROR';
+    // Delete only this account's session folder to clear corrupted files
+    try {
+      const sessionPath = path.join(__dirname, '.wwebjs_auth', `session-${accountId}`);
+      if (fs.existsSync(sessionPath)) {
+        fs.rmSync(sessionPath, { recursive: true, force: true });
+        console.log(`Cleaned up corrupted session for ${accountId}`);
+      }
+    } catch (err) {
+      console.error('Failed to clean up session folder:', err.message);
+    }
     clients[accountId] = { error: 'Authentication failed. Please reset.' };
   });
 
   client.on('disconnected', (reason) => {
     console.log(`Client for account ${accountId} was disconnected! Reason:`, reason);
+    clientStates[accountId] = 'INITIALIZING';
     if (clients[accountId] && clients[accountId].destroy) {
-      clients[accountId].destroy();
+      clients[accountId].destroy().catch(() => {});
     }
     delete clients[accountId];
     delete qrCodes[accountId];
+    delete clientPhones[accountId];
   });
 
   client.on('message', async (msg) => {
@@ -231,7 +255,7 @@ function initializeClient(accountId) {
   
   let timeoutId;
   const timeoutPromise = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error('Puppeteer initialization timed out after 60 seconds. Check if Chromium is blocked.')), 60000);
+    timeoutId = setTimeout(() => reject(new Error('Puppeteer initialization timed out after 90 seconds. Check if Chromium is blocked.')), 90000);
   });
 
   Promise.race([initPromise, timeoutPromise])
@@ -243,6 +267,7 @@ function initializeClient(accountId) {
       console.error(`\nIf you see 'Could not find browser revision' or sandbox errors, try running 'npm install puppeteer' in the whatsapp-engine folder, or check your Node.js version.`);
       
       // Set error state instead of just deleting so UI can show it
+      clientStates[accountId] = 'ERROR';
       clients[accountId] = { error: err.message }; 
     });
   
@@ -268,25 +293,33 @@ app.get('/api/status', (req, res) => {
 
   const client = clients[accountId];
 
+  // *** FIX: Use explicit state tracking instead of fragile pupPage checks ***
+  const state = clientStates[accountId] || 'INITIALIZING';
+  
+  // Handle error state (client replaced with { error: '...' } object)
   if (client.error) {
     return res.json({ status: 'ERROR', message: client.error });
   }
 
-  const info = client.info;
-
-  if (info && client.pupPage && !client.pupPage.isClosed()) {
+  // Connected state
+  if (state === 'CONNECTED') {
     return res.json({ 
       status: 'CONNECTED', 
-      phone: info.wid.user 
+      phone: clientPhones[accountId] || (client.info ? client.info.wid.user : null)
     });
   }
 
-  if (qrCodes[accountId]) {
+  // Authenticating state (QR scanned, waiting for WA Web to fully load)
+  if (state === 'AUTHENTICATING') {
+    return res.json({ status: 'AUTHENTICATING' });
+  }
+
+  // QR ready state
+  if (state === 'QR_READY' && qrCodes[accountId]) {
     return res.json({ status: 'QR_READY', qr: qrCodes[accountId] });
   }
 
-  // If we have a client but no QR and no info, it's either booting up OR the user just scanned it and it's authenticating.
-  // We'll return INITIALIZING so the UI says "Initializing Engine..." instead of misleadingly saying "QR Scanned!".
+  // Default: still booting up
   return res.json({ status: 'INITIALIZING' });
 });
 
@@ -320,16 +353,28 @@ app.post('/api/disconnect', async (req, res) => {
   if (!accountId) return res.status(400).json({ error: 'accountId is required' });
 
   const client = clients[accountId];
-  if (client) {
+  if (client && client.logout) {
     try {
       await client.logout();
       delete clients[accountId];
       delete qrCodes[accountId];
+      delete clientStates[accountId];
+      delete clientPhones[accountId];
       res.json({ success: true });
     } catch (err) {
+      // Even if logout fails, clean up
+      try { if (client.destroy) await client.destroy(); } catch(e) {}
+      delete clients[accountId];
+      delete qrCodes[accountId];
+      delete clientStates[accountId];
+      delete clientPhones[accountId];
       res.status(500).json({ error: 'Failed to logout' });
     }
   } else {
+    delete clients[accountId];
+    delete qrCodes[accountId];
+    delete clientStates[accountId];
+    delete clientPhones[accountId];
     res.json({ success: true }); // Already disconnected
   }
 });
@@ -343,6 +388,8 @@ app.post('/api/retry', (req, res) => {
     } catch(e) {}
     delete clients[accountId];
     delete qrCodes[accountId];
+    delete clientStates[accountId];
+    delete clientPhones[accountId];
   }
 
   // Automatically clean up locked session folders so the user doesn't have to
@@ -383,6 +430,14 @@ async function gracefulShutdown(signal) {
   }
   process.exit(0);
 }
+
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('UNHANDLED REJECTION AT:', promise, 'REASON:', reason);
+});
 
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));

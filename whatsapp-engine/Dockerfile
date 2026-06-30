@@ -1,5 +1,8 @@
 FROM node:18-slim
 
+# Restrict Node.js memory to leave room for Google Chrome in 512MB free tier
+ENV NODE_OPTIONS="--max-old-space-size=200"
+
 # Install latest chrome dev package and fonts to support major charsets (Chinese, Japanese, Arabic, Hebrew, Thai and a few others)
 # Note: this installs the necessary libs to make the bundled version of Chromium that Puppeteer
 # installs, work.

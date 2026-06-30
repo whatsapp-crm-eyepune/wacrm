@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { CheckCircle2, Loader2, QrCode, Trash2, Smartphone, AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
@@ -17,6 +17,10 @@ export function WhatsAppConfig() {
   const [qrData, setQrData] = useState<string | null>(null);
   const [connectedPhone, setConnectedPhone] = useState<string | null>(null);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  
+  // Use a ref to track current status for the polling interval
+  // This avoids the stale closure problem where the interval captures an old `status` value
+  const statusRef = useRef<EngineStatus>('INITIALIZING');
 
   const fetchStatus = useCallback(async () => {
     if (!accountId) return;
@@ -25,22 +29,44 @@ export function WhatsAppConfig() {
       const res = await fetch(`/api/whatsapp-local/status?accountId=${accountId}`);
       if (!res.ok) {
         setStatus('ENGINE_OFFLINE');
+        statusRef.current = 'ENGINE_OFFLINE';
+        // Clear stale data on error
+        setQrData(null);
+        setConnectedPhone(null);
         return;
       }
       
       const data = await res.json();
-      setStatus(data.status);
+      const newStatus = data.status as EngineStatus;
+      setStatus(newStatus);
+      statusRef.current = newStatus;
       
-      if (data.status === 'ERROR') {
+      // *** FIX: Explicitly clear stale data for each state transition ***
+      if (newStatus === 'ERROR') {
         setErrorMessage(data.message || 'Unknown error');
-      } else if (data.status === 'QR_READY') {
+        setQrData(null);
+        setConnectedPhone(null);
+      } else if (newStatus === 'QR_READY') {
         setQrData(data.qr);
-      } else if (data.status === 'CONNECTED') {
+        setErrorMessage(null);
+        setConnectedPhone(null);
+      } else if (newStatus === 'CONNECTED') {
         setConnectedPhone(data.phone);
+        setQrData(null); // *** Clear QR when connected ***
+        setErrorMessage(null);
+      } else if (newStatus === 'AUTHENTICATING') {
+        setQrData(null); // *** Clear QR immediately when authenticating ***
+        setErrorMessage(null);
+        setConnectedPhone(null);
+      } else if (newStatus === 'INITIALIZING') {
+        setQrData(null);
+        setErrorMessage(null);
+        setConnectedPhone(null);
       }
     } catch (err) {
       console.error('Failed to fetch engine status', err);
       setStatus('ENGINE_OFFLINE');
+      statusRef.current = 'ENGINE_OFFLINE';
     }
   }, [accountId]);
 
@@ -50,15 +76,14 @@ export function WhatsAppConfig() {
     // Initial fetch
     fetchStatus();
 
-    // Poll every 3 seconds if we are not connected or if offline
+    // Poll every 3 seconds — keep polling even when CONNECTED so we detect disconnections.
+    // If you want to reduce server load, you can poll less frequently when CONNECTED.
     const intervalId = setInterval(() => {
-      if (status !== 'CONNECTED') {
-        fetchStatus();
-      }
+      fetchStatus();
     }, 3000);
 
     return () => clearInterval(intervalId);
-  }, [authLoading, profileLoading, accountId, status, fetchStatus]);
+  }, [authLoading, profileLoading, accountId, fetchStatus]);
 
   async function handleDisconnect() {
     if (!accountId) return;
@@ -72,6 +97,7 @@ export function WhatsAppConfig() {
       if (res.ok) {
         toast.success('Disconnected successfully');
         setStatus('INITIALIZING');
+        statusRef.current = 'INITIALIZING';
         setConnectedPhone(null);
         setQrData(null);
       } else {
@@ -88,7 +114,9 @@ export function WhatsAppConfig() {
   async function handleRetry() {
     if (!accountId) return;
     setStatus('INITIALIZING');
+    statusRef.current = 'INITIALIZING';
     setErrorMessage(null);
+    setQrData(null);
     try {
       await fetch('/api/whatsapp-local/retry', {
         method: 'POST',
@@ -166,11 +194,11 @@ export function WhatsAppConfig() {
           )}
 
           {status === 'AUTHENTICATING' && (
-            <div className="flex flex-col items-center justify-center p-8 border border-dashed border-slate-700 rounded-lg bg-slate-900/50">
+            <div className="flex flex-col items-center justify-center p-8 border border-dashed border-emerald-900/50 rounded-lg bg-emerald-950/10">
               <Loader2 className="size-10 text-emerald-500 animate-spin mb-4" />
               <h3 className="text-lg font-medium text-slate-300">Authenticating...</h3>
               <p className="text-sm text-slate-500 text-center max-w-md mt-2">
-                QR code scanned! Logging into WhatsApp Web.
+                QR code scanned! Logging into WhatsApp Web. This may take up to 30 seconds.
               </p>
             </div>
           )}

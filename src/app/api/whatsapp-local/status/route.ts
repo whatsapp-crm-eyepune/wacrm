@@ -22,18 +22,22 @@ export async function GET(request: Request) {
     }
     const data = await res.json();
     
-    // Auto-update the Supabase database to 'connected' if the engine is CONNECTED.
-    // This allows the Inbox UI to correctly hide the 'WhatsApp is not connected' banner.
-    if (data.status === 'CONNECTED') {
-      const { createClient } = require('@supabase/supabase-js');
-      const supabase = createClient(
-        env.NEXT_PUBLIC_SUPABASE_URL!,
-        env.SUPABASE_SERVICE_ROLE_KEY!
-      );
-      await supabase
-        .from('whatsapp_config')
-        .update({ status: 'connected' })
-        .eq('account_id', accountId);
+    // Auto-update the Supabase database when the engine state changes.
+    // This allows the Inbox UI to correctly show/hide the 'WhatsApp is not connected' banner.
+    if (data.status === 'CONNECTED' || data.status === 'AUTHENTICATING') {
+      try {
+        const { createClient } = require('@supabase/supabase-js');
+        const supabase = createClient(
+          env.NEXT_PUBLIC_SUPABASE_URL!,
+          env.SUPABASE_SERVICE_ROLE_KEY!
+        );
+        await supabase
+          .from('whatsapp_config')
+          .update({ status: data.status === 'CONNECTED' ? 'connected' : 'authenticating' })
+          .eq('account_id', accountId);
+      } catch (dbErr: any) {
+        console.error('Failed to update whatsapp_config status:', dbErr.message);
+      }
     }
     
     return NextResponse.json(data);
