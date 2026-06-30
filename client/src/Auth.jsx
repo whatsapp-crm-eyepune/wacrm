@@ -45,7 +45,7 @@ export default function Auth() {
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-teal-500 to-emerald-500 opacity-80" />
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60 mb-2">
-            Dance Moksha Automation
+            Saaransh <span className="text-lg font-normal text-zinc-400 block mt-1">built by EyE PunE</span>
           </h1>
           <p className="text-sm text-zinc-400">
             {isLogin ? 'Sign in to your workspace' : 'Create a new workspace'}

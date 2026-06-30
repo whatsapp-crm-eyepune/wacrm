@@ -254,7 +254,7 @@ function Dashboard({ session }) {
       <aside className="sidebar glass-panel">
         <div className="sidebar-header">
           <Bot className="icon-primary" />
-          <h2>AutomateAI</h2>
+          <h2>Saaransh</h2>
         </div>
         <nav className="nav-menu">
           <a href="#" className={`nav-item ${activeTab === 'overview' ? 'active' : ''}`} onClick={() => setActiveTab('overview')}><Layers className="icon-small" /> Overview</a>
