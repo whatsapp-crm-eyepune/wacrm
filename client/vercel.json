@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://whatsapp-engine-rs64.onrender.com/api/:path*"
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# WhatsApp Session Data (CRITICAL TO KEEP SECRET)
+server/.wwebjs_auth/
+server/.wwebjs_cache/
+
+# Local databases
+server/rules.json
+server/knowledgeConfig.json
+
+# Build outputs
+client/dist/
+server/dist/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS Files
+.DS_Store
+Thumbs.db
